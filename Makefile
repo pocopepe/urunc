@@ -280,6 +280,24 @@ test_unikernels:
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
 	@echo " "
 
+# Packages containing Fuzz targets. Extend this list as new fuzz tests are added.
+FUZZ_PKGS      := ./pkg/unikontainers ./pkg/unikontainers/hypervisors
+#? FUZZTIME How long each individual Fuzz target runs for (default: 15s)
+FUZZTIME       ?= 15s
+
+## fuzz Run every Fuzz target in FUZZ_PKGS: replay its seed corpus, then
+## search for new failures for FUZZTIME. `go test -fuzz` only accepts a
+## single matching target per invocation, so this discovers and loops over
+## each FuzzXxx function individually.
+.PHONY: fuzz
+fuzz:
+	@for pkg in $(FUZZ_PKGS); do \
+		for fn in $$($(GO) test -list '^Fuzz' $$pkg | grep '^Fuzz'); do \
+			echo "==> fuzzing $$pkg $$fn for $(FUZZTIME)"; \
+			$(GO) test -run=$$fn -fuzz=$$fn -fuzztime=$(FUZZTIME) $$pkg || exit 1; \
+		done; \
+	done
+
 ## test_nerdctl Run all end-to-end tests with nerdctl
 .PHONY: test_nerdctl
 test_nerdctl:

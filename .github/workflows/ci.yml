@@ -61,6 +61,15 @@ jobs:
       go_version: ${{ inputs.go_version }}
     secrets: inherit
 
+  fuzz_test:
+    if: ${{ inputs.skip-build != 'yes' }}
+    name: Fuzz tests
+    uses: ./.github/workflows/fuzz_test.yml
+    with:
+      ref: ${{ inputs.ref }}
+      go_version: ${{ inputs.go_version }}
+    secrets: inherit
+
   vm_test:
     if: ${{ inputs.skip-build != 'yes' }}
     needs: [build, unit_test]
