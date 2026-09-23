@@ -311,3 +311,52 @@ func TestFreeBSDInitRootfsType(t *testing.T) {
 		assert.NoError(t, err, "rootfs type %q must be accepted", rootfs)
 	}
 }
+
+// The functions below are additions on top of the upstream file above -- see
+// linux_test.go for why this class of test exists. None of upstream's own
+// FreeBSD tests exercise an empty Net.Mask, an empty CmdLine, or a zero-length
+// Env, which is exactly the gap gremlins found (CONDITIONALS_BOUNDARY/NEGATION
+// survivors at freebsd.go:200, :209, :274).
+
+func TestFreeBSDInitNetworkOptional(t *testing.T) {
+	// Kills a mutant negating `if data.Net.Mask != ""` at freebsd.go:200 --
+	// upstream's own tests always supply a mask, so an empty one was never
+	// exercised. Mirrors TestMirageInitNetworkNaming's "no mask" case.
+	f := newFreeBSD()
+	err := f.Init(types.UnikernelParams{
+		CmdLine: []string{"/sbin/init"},
+		Rootfs:  types.RootfsParams{Type: "block"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, FreeBSDNet{}, f.Net)
+}
+
+func TestFreeBSDInitCmdLineOptional(t *testing.T) {
+	// Kills a mutant negating `if len(data.CmdLine) > 0` at freebsd.go:209.
+	// InitPath/Command must stay at their zero values rather than panicking
+	// on data.CmdLine[0] or producing a stray entry.
+	f := newFreeBSD()
+	err := f.Init(types.UnikernelParams{Rootfs: types.RootfsParams{Type: "block"}})
+	assert.NoError(t, err)
+	assert.Equal(t, "", f.InitPath)
+	assert.Nil(t, f.Command)
+}
+
+func TestFreeBSDBuildUrunitConfigNoEnv(t *testing.T) {
+	// Kills a mutant negating `if len(f.Env) > 0` at freebsd.go:274 --
+	// upstream's TestFreeBSDBuildUrunitConfig always supplies 2 env vars, so
+	// the zero-env path (UES immediately followed by UEE, no lines between)
+	// was never exercised. Same HasPrefix-then-check-padding pattern as that
+	// test, since the config is padded to a whole sector.
+	f := &FreeBSD{Monitor: "qemu", Command: []string{"/init"}}
+	conf := f.buildUrunitConfig()
+
+	assert.Equal(t, 0, len(conf)%blockSectorSize, "config must be a whole number of sectors")
+	expectedHead := "UES\nUEE\n" +
+		"UCS\nUID:0\nGID:0\nWD:\nARC:1\nARV:/init\nUCE\n" +
+		"UBS\nUBE\n" +
+		"UNS\nIP:\nGW:\nMSK:\nUNE\n" +
+		"PAD\n"
+	assert.True(t, strings.HasPrefix(conf, expectedHead), "unexpected config:\n%s", conf)
+	assert.Equal(t, "", strings.Trim(conf[len(expectedHead):], "\n"), "padding must be newlines only")
+}

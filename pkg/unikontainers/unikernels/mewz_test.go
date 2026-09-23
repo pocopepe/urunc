@@ -19,6 +19,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestMewzCommandString(t *testing.T) {
@@ -55,4 +57,67 @@ func TestMewzCommandString(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+// The functions below are additions on top of the upstream file above -- see
+// linux_test.go for why this class of test exists. Kept separate rather than
+// merged into TestMewzCommandString so the upstream test stays untouched.
+
+func TestMewzInit(t *testing.T) {
+	t.Run("a mask on the spec is converted to CIDR via subnetMaskToCIDR", func(t *testing.T) {
+		m := &Mewz{}
+		require.NoError(t, m.Init(types.UnikernelParams{
+			CmdLine: []string{"/init"},
+			Net:     types.NetDevParams{IP: "10.0.0.5", Gateway: "10.0.0.1", Mask: "255.255.255.0"},
+		}))
+		assert.Equal(t, MewzNet{Address: "10.0.0.5", Mask: 24, Gateway: "10.0.0.1"}, m.Net)
+	})
+
+	t.Run("no mask on the spec defaults to /24, not zero", func(t *testing.T) {
+		// Kills a mutant that drops the "else mask = 24" default, which
+		// would silently produce a /0 mask instead.
+		m := &Mewz{}
+		require.NoError(t, m.Init(types.UnikernelParams{
+			CmdLine: []string{"/init"},
+			Net:     types.NetDevParams{IP: "10.0.0.5", Gateway: "10.0.0.1"},
+		}))
+		assert.Equal(t, 24, m.Net.Mask)
+	})
+}
+
+func TestMewzMonitorNetCli(t *testing.T) {
+	t.Run("qemu gets the fixed virtio-net device/netdev pair", func(t *testing.T) {
+		m := &Mewz{Monitor: "qemu"}
+		want := []string{
+			"-device", "virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,mac=aa:bb:cc:dd:ee:ff",
+			"-netdev", "tap,script=no,downscript=no,id=net0,ifname=tap0",
+		}
+		assert.Equal(t, want, m.MonitorNetCli("tap0", "aa:bb:cc:dd:ee:ff"))
+	})
+
+	t.Run("any other monitor gets nil -- Mewz only runs on qemu today", func(t *testing.T) {
+		m := &Mewz{Monitor: "hvt"}
+		assert.Nil(t, m.MonitorNetCli("tap0", "aa:bb:cc:dd:ee:ff"))
+	})
+}
+
+func TestMewzMonitorCli(t *testing.T) {
+	t.Run("qemu gets isa-debug-exit wired up for guest exit-code reporting", func(t *testing.T) {
+		m := &Mewz{Monitor: "qemu"}
+		want := types.MonitorCliArgs{OtherArgs: []string{"-no-reboot", "-device", "isa-debug-exit,iobase=0x501,iosize=2"}}
+		assert.Equal(t, want, m.MonitorCli())
+	})
+
+	t.Run("any other monitor gets the zero value", func(t *testing.T) {
+		m := &Mewz{Monitor: "hvt"}
+		assert.Equal(t, types.MonitorCliArgs{}, m.MonitorCli())
+	})
+}
+
+func TestMewzUnsupportedSurfaces(t *testing.T) {
+	m := &Mewz{}
+	assert.False(t, m.SupportsBlock())
+	assert.False(t, m.SupportsFS("9pfs"))
+	assert.Nil(t, m.MonitorBlockCli())
+	assert.Nil(t, m.MonitorSharedfsCli("9pfs", "/mnt/rootfs"))
 }
