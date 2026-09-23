@@ -40,15 +40,10 @@ func bytesToMiB(bytes uint64) uint64 {
 	return bytes / bytesInMiB
 }
 
-func bytesToMB(bytes uint64) uint64 {
-	const bytesInMB = 1000 * 1000
-	return bytes / bytesInMB
-}
-
 func BytesToStringMB(argMem uint64) string {
 	stringMem := strconv.FormatUint(DefaultMemory, 10)
 	if argMem != 0 {
-		userMem := bytesToMB(argMem)
+		userMem := bytesToMiB(argMem)
 		// Check for too low memory
 		if userMem == 0 {
 			userMem = DefaultMemory

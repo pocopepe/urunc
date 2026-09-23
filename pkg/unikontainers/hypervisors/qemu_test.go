@@ -98,11 +98,11 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			},
 		},
 		{
-			name: "custom MemSizeB renders -m in MB",
+			name: "custom MemSizeB renders -m in MiB",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
-				MemSizeB:      512 * 1000 * 1000,
+				MemSizeB:      512 * 1024 * 1024,
 			},
 			unikernel:   &fakeUnikernel{},
 			mustContain: []string{"-m 512M"},
@@ -272,6 +272,33 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			// The kernel command line must come out as -append followed by the
 			// full command as a single argument. Asserting the whole substring
 			// in the joined output is enough to confirm that.
+			// Kills a CONDITIONALS_NEGATION survivor at qemu.go:108 (the
+			// runtime.GOARCH == "arm64" check for the netdev device type,
+			// separate from this file's existing archFlag/"-M virt" check for
+			// the machine-type flag elsewhere). No case exercised the
+			// TapDev-with-empty-netCli path at all before this one. Same
+			// technique as archShouldBePresent above: asserting the
+			// non-arm64 device string still catches a mutant that flips the
+			// condition, even without arm64 hardware to reach the other side.
+			name: "TapDev with no unikernel-specific net CLI renders the default netdev/device pair",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Net:           types.NetDevParams{TapDev: "tap0", MAC: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+			},
+			unikernel: &fakeUnikernel{},
+			mustContain: func() []string {
+				devType := "virtio-net-pci"
+				if runtime.GOARCH == "arm64" {
+					devType = "virtio-net-device"
+				}
+				return []string{
+					"-netdev tap,id=net0,script=no,downscript=no,ifname=tap0",
+					devType + ",netdev=net0,host_mtu=1500,mac=aa:bb:cc:dd:ee:ff",
+				}
+			}(),
+			mustNotContain: []string{"-nic none"},
+		},
+		{
 			name: "kernel command is appended as a single argument after -append",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,

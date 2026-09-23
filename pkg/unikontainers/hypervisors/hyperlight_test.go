@@ -36,6 +36,20 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 	assert.Equal(t, []string{"/usr/local/bin/hyperlight-unikraft", "/path/to/unikernel", "--initrd", "/path/to/initrd", "--memory", "268435456"}, cmd)
 }
 
+// TestHyperlightBuildExecCmdZeroMemory kills a CONDITIONALS_BOUNDARY survivor
+// at hyperlight.go:70 (`if args.MemSizeB > 0`). MemSizeB is a uint64, so it can
+// never be negative -- `> 0` and `>= 0` are only distinguishable at exactly
+// zero, and neither existing case here reaches it. A mutant flipping to `>= 0`
+// would append "--memory 0" instead of omitting the flag.
+func TestHyperlightBuildExecCmdZeroMemory(t *testing.T) {
+	h := &Hyperlight{binaryPath: "/usr/local/bin/hyperlight-unikraft"}
+	args := types.ExecArgs{UnikernelPath: "/path/to/unikernel"}
+
+	cmd, err := h.BuildExecCmd(args, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/usr/local/bin/hyperlight-unikraft", "/path/to/unikernel"}, cmd)
+}
+
 func TestHyperlightBuildExecCmdNoInitrd(t *testing.T) {
 	h := &Hyperlight{
 		binaryPath: "/usr/local/bin/hyperlight-unikraft",
