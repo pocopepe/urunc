@@ -1,0 +1,15 @@
+# urunit config markers -- forging one of these inside a value is the injection
+# this target hunts for.
+"UES"
+"UEE"
+"UCS"
+"UCE"
+"UBS"
+"UBE"
+"UID:"
+"GID:"
+"WD:"
+"ID:"
+"MP:"
+"\x0A"
+"="
