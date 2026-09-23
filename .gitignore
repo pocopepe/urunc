@@ -31,3 +31,31 @@ bundles/
 
 # python-related directories
 __pycache__/
+
+# Artifacts leaked into the repo root by go-118-fuzz-build / the containerized
+# OSS-Fuzz build. That build runs as root through a bind mount, so it both
+# drops .a/.h files here AND leaves them root-owned, which silently made seven
+# harness source files unwritable (found 2026-08-28). Never commit these.
+fuzz_*.a
+fuzz_*.h
+*_fuzz.go
+main.*.go
+
+# Machine-generated fuzzing corpus. Go writes every coverage-interesting input
+# here during a campaign -- currently ~4000 entries, almost all noise (one
+# target alone accumulated 1301). The durable seeds live in f.Add() calls in
+# the harness source, so nothing is lost by ignoring these.
+#
+# If a real crash reproducer is ever found, commit that one deliberately with
+# `git add -f <path>`: a committed reproducer replays on every `go test` and is
+# the regression guarantee worth having. Blanket-committing the coverage corpus
+# is not.
+**/testdata/fuzz/
+
+# Orphaned output from an earlier, separate fuzz-orchestration run (2026-09-10),
+# unrelated to the current suite.
+logs/
+
+# Scratch scripts left by automated edit passes.
+rewrite_*.py
+fix_*.py

@@ -280,8 +280,11 @@ test_unikernels:
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
 	@echo " "
 
-# Packages containing Fuzz targets. Extend this list as new fuzz tests are added.
-FUZZ_PKGS      := ./pkg/unikontainers ./pkg/unikontainers/hypervisors
+# Packages containing Fuzz targets, discovered rather than hand-listed. A
+# hand-maintained list drifted twice during Phase 1: once silently skipping 10
+# of 27 targets, and again keeping a package with no targets left while
+# missing one that had a target. Same fix containerd uses in its OSS-Fuzz build.
+FUZZ_PKGS      := $(patsubst %/,./%,$(sort $(dir $(shell grep -rl --include='*_test.go' '^func Fuzz.*testing\.F' pkg cmd internal))))
 #? FUZZTIME How long each individual Fuzz target runs for (default: 15s)
 FUZZTIME       ?= 15s
 
@@ -289,14 +292,29 @@ FUZZTIME       ?= 15s
 ## search for new failures for FUZZTIME. `go test -fuzz` only accepts a
 ## single matching target per invocation, so this discovers and loops over
 ## each FuzzXxx function individually.
+##
+## A target whose regression corpus (testdata/fuzz/) contains a committed,
+## still-unfixed finding is EXPECTED to fail here -- that corpus entry is
+## doing its job as a regression test. It must not stop the other targets
+## from running: an early `exit 1` here would silently skip every target
+## that happens to come later in FUZZ_PKGS, in every later package too, the
+## moment the first known-failing target is reached. Failures are collected
+## and the run only exits non-zero, with a summary, once every target in
+## every package has had a turn.
 .PHONY: fuzz
 fuzz:
-	@for pkg in $(FUZZ_PKGS); do \
+	@failed=""; \
+	for pkg in $(FUZZ_PKGS); do \
 		for fn in $$($(GO) test -list '^Fuzz' $$pkg | grep '^Fuzz'); do \
 			echo "==> fuzzing $$pkg $$fn for $(FUZZTIME)"; \
-			$(GO) test -run=$$fn -fuzz=$$fn -fuzztime=$(FUZZTIME) $$pkg || exit 1; \
+			$(GO) test -run=^$$fn$$ -fuzz=^$$fn$$ -fuzztime=$(FUZZTIME) $$pkg || failed="$$failed $$pkg:$$fn"; \
 		done; \
-	done
+	done; \
+	if [ -n "$$failed" ]; then \
+		echo "FAILED (see above for details):"; \
+		for f in $$failed; do echo "  $$f"; done; \
+		exit 1; \
+	fi
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
 .PHONY: test_nerdctl
@@ -361,3 +379,24 @@ help:
 	@grep -w "^##" $(MAKEFILE_LIST) | sed -n 's/^## /\t/p' | sed -n 's/ /\@/p' | column -s '\@' -t
 	@echo 'Flags:'
 	@grep -w "^#?" $(MAKEFILE_LIST) | sed -n 's/^#? /\t/p' | sed -n 's/ /\@/p' | column -s '\@' -t
+
+#? MUTATE_COEFF gremlins timeout multiplier. Our test binaries run in ~0.03s,
+#? so gremlins' computed timeout lands below Go's compile time and every
+#? mutant falsely reports TIMED OUT. 200 was the lowest value that produced
+#? real kill/live results locally.
+MUTATE_COEFF   ?= 200
+
+## mutate Mutation-test FUZZ_PKGS: inject mutants, report which ones no test
+## kills. Measures oracle strength, which statement coverage does not --
+## hypervisors sits at 42% coverage but leaves 11 mutants alive.
+## Requires a GREEN package: gremlins aborts coverage gathering if any test
+## fails, so known findings must be suppressed via tests/fuzzing/known first.
+.PHONY: mutate
+mutate:
+	@GREMLINS=$$(command -v gremlins || echo "$$($(GO) env GOPATH)/bin/gremlins"); \
+	[ -x "$$GREMLINS" ] || { echo "need: $(GO) install github.com/go-gremlins/gremlins/cmd/gremlins@latest"; exit 1; }; \
+	for pkg in $(FUZZ_PKGS); do \
+		$(GO) test "$$pkg" >/dev/null 2>&1 || { echo "SKIP $$pkg (red: suppress findings via known.Expected first)"; continue; }; \
+		echo "==> mutating $$pkg"; \
+		"$$GREMLINS" unleash --timeout-coefficient $(MUTATE_COEFF) "$$pkg" | tail -4; \
+	done
