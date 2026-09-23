@@ -35,6 +35,24 @@ import (
 // of the space the hand-picked cases don't cover (odd offsets, partial
 // headers, non-hex size/inode fields, names that collide with "." after
 // archiveLookupPath normalization, etc).
+// fuzzWriteSource is writeSource (initrd_test.go), duplicated here rather
+// than called across files. OSS-Fuzz/ClusterFuzzLite's Go build
+// (go-118-fuzz-build) packages one target's containing file in isolation, so
+// a helper defined in a sibling _test.go file is invisible to the generated
+// harness, and rewrites this file's own *testing.T to its own look-alike
+// type, so the helper takes a small interface instead of the concrete type.
+func fuzzWriteSource(t interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}, dir, name, content string) string {
+	t.Helper()
+	filename := filepath.Join(dir, name)
+	if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
+		t.Fatalf("could not write source file: %v", err)
+	}
+	return filename
+}
+
 func FuzzMergeFileMountsIntoInitrdPreservesOriginalOnError(f *testing.F) {
 	f.Add([]byte("not a cpio archive"))
 	f.Add([]byte(""))
@@ -47,7 +65,7 @@ func FuzzMergeFileMountsIntoInitrdPreservesOriginalOnError(f *testing.F) {
 		if err := os.WriteFile(initrdPath, existing, 0o600); err != nil {
 			t.Fatalf("could not seed initrd file: %v", err)
 		}
-		source := writeSource(t, dir, "mounted", "new-content")
+		source := fuzzWriteSource(t, dir, "mounted", "new-content")
 
 		err := MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
 			{Type: "bind", Source: source, Destination: "/mounted"},

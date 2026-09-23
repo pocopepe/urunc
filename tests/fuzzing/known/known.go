@@ -54,8 +54,18 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"testing"
 )
+
+// TB is the subset of *testing.T that Expected needs. It exists so this
+// package builds under OSS-Fuzz/ClusterFuzzLite's Go pipeline too: that
+// pipeline rewrites f.Fuzz(func(t *testing.T, ...)) to hand the closure
+// AdamKorcz/go-118-fuzz-build's own *testing.T look-alike instead of the
+// standard library's, and the two are different concrete types. Both satisfy
+// this interface, so callers pass either one unchanged.
+type TB interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
 
 // hits records which suppressions actually fired in this process, so a
 // suppression that has gone stale (because the underlying bug was fixed, or
@@ -76,7 +86,7 @@ var (
 //
 // Callers must have already established that a violation occurred; Expected
 // does not evaluate the property itself.
-func Expected(t *testing.T, id string, shapeOK bool, format string, args ...any) {
+func Expected(t TB, id string, shapeOK bool, format string, args ...any) {
 	t.Helper()
 
 	if !shapeOK {

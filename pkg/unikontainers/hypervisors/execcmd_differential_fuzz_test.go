@@ -37,6 +37,22 @@ import (
 // Coverage was never the limiting factor; the assertion was. See
 // tests/fuzzing/FUZZING_FINDINGS.md section 6, rule 4.
 
+// diffExecCmdVMMs is execCmdVMMs (execcmd_fuzz_test.go), duplicated here
+// rather than called across files. OSS-Fuzz/ClusterFuzzLite's Go build
+// (go-118-fuzz-build) packages one target's containing file in isolation, so
+// a helper defined in a sibling _test.go file is invisible to the generated
+// harness ("undefined: execCmdVMMs"), confirmed by an actual local build.
+// Keep the two in sync by hand if the VMM set changes.
+func diffExecCmdVMMs() map[string]types.VMM {
+	return map[string]types.VMM{
+		"hvt":              &HVT{binary: HvtBinary, binaryPath: "/usr/bin/" + HvtBinary},
+		"spt":              &SPT{binary: SptBinary, binaryPath: "/usr/bin/" + SptBinary},
+		"qemu":             &Qemu{binary: QemuBinary, binaryPath: "/usr/bin/" + QemuBinary},
+		"cloud-hypervisor": &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: "/usr/bin/" + CloudHypervisorBinary},
+		"hyperlight":       &Hyperlight{binary: HyperlightBinary, binaryPath: "/usr/bin/" + HyperlightBinary},
+	}
+}
+
 // memEncoding describes how one backend writes guest memory into its argv, so
 // the value can be read back out and compared in bytes.
 //
@@ -97,7 +113,7 @@ func extractMemBytes(vmm string, argv []string) (uint64, bool) {
 	// Recorded as an open question in FUZZING_FINDINGS.md rather than encoded
 	// as a expectation here.
 	//
-	// firecracker is absent from execCmdVMMs() entirely (it writes a JSON
+	// firecracker is absent from diffExecCmdVMMs() entirely (it writes a JSON
 	// config to disk per call -- per-iteration file I/O is a fuzz anti-pattern).
 	return 0, false
 }
@@ -150,7 +166,7 @@ func FuzzBuildExecCmdMemoryAgreement(f *testing.F) {
 
 		wantMiB := memSizeB / mib
 
-		for vmmName, vmm := range execCmdVMMs() {
+		for vmmName, vmm := range diffExecCmdVMMs() {
 			argv, err := vmm.BuildExecCmd(execArgs, u)
 			if err != nil {
 				continue
@@ -235,7 +251,7 @@ func FuzzBuildExecCmdCommandAgreement(f *testing.F) {
 
 		// deltas[vmm] = len(argv with Command) - len(argv with Command == "")
 		deltas := make(map[string]int)
-		for vmmName, vmm := range execCmdVMMs() {
+		for vmmName, vmm := range diffExecCmdVMMs() {
 			withEmpty := base
 			withEmpty.Command = ""
 			argvEmpty, err := vmm.BuildExecCmd(withEmpty, u)
