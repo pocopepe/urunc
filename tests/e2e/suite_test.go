@@ -37,6 +37,27 @@ func TestE2E(t *testing.T) {
 	RunSpecs(t, "E2E Suite")
 }
 
+// TestCleanImages removes the images of all end-to-end test cases, for every
+// tool. It backs `make e2e_clean_images`, to clean up after KEEP_IMAGES runs.
+func TestCleanImages(t *testing.T) {
+	if os.Getenv("KEEP_IMAGES") != "" {
+		t.Skip("KEEP_IMAGES is set")
+	}
+
+	tools := map[string][]containerTestArgs{
+		testNerdctl: nerdctlTestCases(),
+		testCtr:     ctrTestCases(),
+		testCrictl:  crictlTestCases(),
+		testDocker:  dockerTestCases(),
+	}
+	for tool, cases := range tools {
+		for _, image := range getTestImages(cases) {
+			// An image that was never pulled is not an error here.
+			_ = removeImageForTest(tool, image)
+		}
+	}
+}
+
 // setupTestDir switches to a temp directory, restored via DeferCleanup.
 func setupTestDir() {
 	cwd, err := os.Getwd()

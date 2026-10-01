@@ -336,6 +336,13 @@ test_docker_%:
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Docker.*$*" $(GINKGO_SKIP)
 	@echo " "
 
+## e2e_clean_images Remove the images of the end-to-end tests, for all tools
+.PHONY: e2e_clean_images
+e2e_clean_images:
+	@echo "Removing e2e test images"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestCleanImages
+	@echo " "
+
 ## help Show this help message
 help:
 	@echo 'Usage: make <target> <flags>'
