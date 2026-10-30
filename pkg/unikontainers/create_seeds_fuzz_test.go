@@ -39,6 +39,7 @@ type seedRow struct {
 	Bin, Initrd, Block, BlkMnt    string
 	MountRootfs, Version, Guest   string   // Guest replaces the pair's guest
 	Mounts                        []string // destinations of extra file mounts
+	Args, Env                     []string // of the container process; /app arg and PATH when empty
 	MemMiB                        int64
 	Seccomp, Confine              bool // a seccomp profile with capabilities; namespaces, masked paths and so on
 	Solo5Devs, VAccel, QueueProxy bool
@@ -59,8 +60,8 @@ func (r seedRow) pairs() []guestMonitorPair {
 	return []guestMonitorPair{p}
 }
 
-// input builds the bytes FuzzCreate takes for the row on the pair.
-func (r seedRow) input(p guestMonitorPair) []byte {
+// spec returns the typed values of the row on the pair.
+func (r seedRow) spec(p guestMonitorPair) typedSpec {
 	if r.Guest != "" {
 		p.guest = r.Guest
 	}
@@ -88,11 +89,23 @@ func (r seedRow) input(p guestMonitorPair) []byte {
 	if r.Confine {
 		sel |= selConfine
 	}
-	in := typedInput(typedSpec{
+	args, env := r.Args, r.Env
+	if len(args) == 0 {
+		args = []string{"/app", "arg"}
+	}
+	if len(env) == 0 {
+		env = []string{"PATH=/usr/bin"}
+	}
+	return typedSpec{
 		pair: p, viaJSON: r.JSON, bin: r.Bin, initrd: r.Initrd, block: r.Block, blkMnt: r.BlkMnt,
-		mountRootfs: r.MountRootfs, version: r.Version, args: "/app\x00arg", env: "PATH=/usr/bin", cwd: "/",
+		mountRootfs: r.MountRootfs, version: r.Version, args: strings.Join(args, "\x00"), env: strings.Join(env, "\x00"), cwd: "/",
 		memLimit: r.MemMiB << 20, seccomp: r.Seccomp, mountDests: strings.Join(dests, "\x00"), sel: sel, host: r.Host,
-	})
+	}
+}
+
+// input builds the bytes FuzzCreate takes for the row on the pair.
+func (r seedRow) input(p guestMonitorPair) []byte {
+	in := typedInput(r.spec(p))
 	parts := bytes.Split(in, []byte{0}) // config.json, urunc.json, the host byte
 	if r.BadKey != "" {
 		var conf map[string]string

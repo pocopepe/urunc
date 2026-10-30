@@ -29,6 +29,9 @@ FuzzCreate = [
 	{ pair = "hvt/mirage", mountRootfs = "true" },
 	{ pair = "hyperlight-unikraft/unikraft", mountRootfs = "true" },
 
+	# A container process with arguments and an environment of its own, as an image of nginx has.
+	{ pair = "qemu/linux", args = ["/urunit", "/usr/sbin/nginx", "-g", "daemon off;"], env = ["PATH=/usr/bin", "NGINX_VERSION=1.27"], memMiB = 512, seccomp = true },
+
 	# The start step builds a command line per guest and monitor: the network, a block device, a shared rootfs.
 	{ pair = "qemu/hermit", host = 0x01 },
 	{ pair = "hvt/rumprun", host = 0x01 },

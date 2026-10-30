@@ -25,6 +25,7 @@ zips=$(mktemp -d -p "$OUT")
 targets=(
 	unikontainers:FuzzGetUnikernelConfig
 	unikontainers:FuzzCreate
+	unikontainers:FuzzCreateTyped
 )
 for t in "${targets[@]}"; do
 	pkg=${t%%:*} fuzzer=${t#*:}
