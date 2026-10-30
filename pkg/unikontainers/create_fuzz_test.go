@@ -37,7 +37,7 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
-// FuzzCreate takes a bundle through create, up to what the monitor process is started from. The
+// FuzzCreate takes a bundle through create and start, up to the monitor's command line. The
 // input is config.json, then optionally a NUL and urunc.json, then optionally a NUL and a host byte.
 func FuzzCreate(f *testing.F) {
 	fuzzseed.QuietLogs(f)
@@ -102,24 +102,36 @@ func newFuzzEnv(f *testing.F) *fuzzEnv {
 	return sharedFuzzEnv
 }
 
-// fuzzOutcome is how far an input got, and what create saved for the monitor process.
+// The stages an input of FuzzCreate goes through, in order.
+const (
+	stageNew    = "New"
+	stageRootfs = "rootfs"
+	stageSaved  = "saved"
+	stageStart  = "start"
+	stageArgv   = "argv" // the monitor's command was built
+)
+
+// fuzzOutcome is how far an input got, what create saved for the monitor process, and what the
+// monitor would have been run with.
 type fuzzOutcome struct {
-	stage string
-	res   monitorResources
+	stage    string
+	command  string
+	argv     []string
+	fcConfig []byte
+	res      monitorResources
 }
 
 // fuzzRun is what one input of FuzzCreate left behind.
 type fuzzRun struct {
-	stage string // the last stage reached
-	host  byte
-	res   monitorResources
+	fuzzOutcome
+	host byte
 }
 
 // run takes one input through the pipeline.
 func (e *fuzzEnv) run(t *testing.T, data []byte) fuzzOutcome {
 	r := &fuzzRun{}
 	e.pipeline(t, r, data)
-	return fuzzOutcome{r.stage, r.res}
+	return r.fuzzOutcome
 }
 
 func (e *fuzzEnv) pipeline(t *testing.T, r *fuzzRun, data []byte) {
@@ -137,7 +149,7 @@ func (e *fuzzEnv) pipeline(t *testing.T, r *fuzzRun, data []byte) {
 	if !writeFuzzBundle(t, e.bundle, config, uruncJSON, r.host) {
 		return
 	}
-	r.stage = "New"
+	r.stage = stageNew
 	cfg := e.host(t, r.host)
 	u, err := New(e.bundle, "fuzz", e.state, cfg)
 	if err != nil {
@@ -163,7 +175,7 @@ func (e *fuzzEnv) pipeline(t *testing.T, r *fuzzRun, data []byte) {
 			_ = os.WriteFile(p, e.boot, 0o600)
 		}
 	}
-	r.stage = "rootfs"
+	r.stage = stageRootfs
 	rp, err := ChooseRootfs(e.bundle, u.Spec.Root.Path, ann, cfg)
 	if err != nil || (rp.Type == "block" && rp.MountedPath != "") { // mounting a block rootfs needs root
 		return
@@ -183,7 +195,7 @@ func (e *fuzzEnv) pipeline(t *testing.T, r *fuzzRun, data []byte) {
 	checkMonitorCapabilities(t, u.Spec, res.TUNTAP)
 
 	// What create saves for the monitor process: BuildContainerConfig reads the resources back.
-	r.stage = "saved"
+	r.stage = stageSaved
 	for _, dir := range []string{u.BaseDir, rp.MonRootfs} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -201,6 +213,23 @@ func (e *fuzzEnv) pipeline(t *testing.T, r *fuzzRun, data []byte) {
 	}
 
 	r.res = res
+
+	// What start and the monitor process do with it.
+	if _, err = Get("fuzz", u.RootDir); err != nil {
+		t.Fatalf("start cannot load what create saved: %v", err)
+	}
+	ms, err := LoadMonitorSpec(rp.MonRootfs)
+	if err != nil {
+		t.Fatalf("the monitor process cannot load its spec: %v", err)
+	}
+	checkMonitorSpec(t, u.Spec, ms)
+	r.stage = stageStart
+	st, err := startMonitor(ms, r.host)
+	if err != nil {
+		return
+	}
+	r.stage, r.command, r.argv, r.fcConfig = stageArgv, st.ms.ExecArgs.Command, st.argv, st.fcConfig
+	checkMonitorStart(t, u.Spec, st.ms, rp.Type, r.host, st.argv)
 }
 
 // fuzzDevices makes the monitor's devices links to devices every host and container has, so

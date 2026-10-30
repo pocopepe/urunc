@@ -37,7 +37,7 @@ type seedRow struct {
 	Pair                          string
 	JSON, NoResolv                bool // urunc.json instead of annotations; no resolv.conf mount
 	Bin, Initrd, Block, BlkMnt    string
-	MountRootfs, Guest            string   // Guest replaces the pair's guest
+	MountRootfs, Version, Guest   string   // Guest replaces the pair's guest
 	Mounts                        []string // destinations of extra file mounts
 	MemMiB                        int64
 	Seccomp, Confine              bool // a seccomp profile with capabilities; namespaces, masked paths and so on
@@ -90,7 +90,7 @@ func (r seedRow) input(p guestMonitorPair) []byte {
 	}
 	in := typedInput(typedSpec{
 		pair: p, viaJSON: r.JSON, bin: r.Bin, initrd: r.Initrd, block: r.Block, blkMnt: r.BlkMnt,
-		mountRootfs: r.MountRootfs, args: "/app\x00arg", env: "PATH=/usr/bin", cwd: "/",
+		mountRootfs: r.MountRootfs, version: r.Version, args: "/app\x00arg", env: "PATH=/usr/bin", cwd: "/",
 		memLimit: r.MemMiB << 20, seccomp: r.Seccomp, mountDests: strings.Join(dests, "\x00"), sel: sel, host: r.Host,
 	})
 	parts := bytes.Split(in, []byte{0}) // config.json, urunc.json, the host byte

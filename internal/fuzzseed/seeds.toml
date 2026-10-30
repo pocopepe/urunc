@@ -29,6 +29,25 @@ FuzzCreate = [
 	{ pair = "hvt/mirage", mountRootfs = "true" },
 	{ pair = "hyperlight-unikraft/unikraft", mountRootfs = "true" },
 
+	# The start step builds a command line per guest and monitor: the network, a block device, a shared rootfs.
+	{ pair = "qemu/hermit", host = 0x01 },
+	{ pair = "hvt/rumprun", host = 0x01 },
+	{ pair = "spt/mirage", host = 0x01 },
+	{ pair = "qemu/mewz", host = 0x01 },
+	{ pair = "firecracker/linux", host = 0x01 },
+	{ pair = "hyperlight-unikraft/unikraft", json = true, initrd = "/unikernel/initrd", mountRootfs = "true", host = 0x01 },
+	{ pair = "cloud-hypervisor/linux", json = true, initrd = "/unikernel/initrd", mountRootfs = "true", host = 0x01 },
+	{ pair = "firecracker/freebsd", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "cloud-hypervisor/linux", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "qemu/freebsd", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "spt/mirage", block = "/data.img", blkMnt = "/data" },
+	{ pair = "firecracker/linux", block = "/data.img", blkMnt = "/data" },
+	{ pair = "qemu/unikraft", mountRootfs = "true", memMiB = 128, seccomp = true, confine = true },
+	{ pair = "firecracker/unikraft", version = "0.10.0" },
+	# Without these two no seed reaches the QEMU virtiofs check or the Unikraft nameserver check.
+	{ pair = "qemu/linux", mountRootfs = "true" },
+	{ pair = "qemu/unikraft", version = "0.18.0", host = 0x01 },
+
 	# What the host left behind: a broken urunc config, no monitor, a resolv.conf without a usable nameserver.
 	{ pair = "qemu/linux", host = 0x30 },
 	{ pair = "qemu/linux", host = 0x20 },
