@@ -20,8 +20,20 @@
 # go-118-fuzz-build cannot patch a toolchain that go downloads into the module cache.
 export GOTOOLCHAIN=local
 
-fuzzer=FuzzGetUnikernelConfig
-compile_native_go_fuzzer_v2 github.com/urunc-dev/urunc/pkg/unikontainers "$fuzzer" "$fuzzer"
-
-# compile_native_go_fuzzer_v2 exits 0 when it cannot find the function.
-test -x "$OUT/$fuzzer"
+# addStdLibCorpusToFuzzer makes each zip in TMPDIR and moves it to $OUT, which can be another filesystem.
+zips=$(mktemp -d -p "$OUT")
+targets=(
+	unikontainers:FuzzGetUnikernelConfig
+	unikontainers:FuzzCreate
+)
+for t in "${targets[@]}"; do
+	pkg=${t%%:*} fuzzer=${t#*:}
+	compile_native_go_fuzzer_v2 "github.com/urunc-dev/urunc/pkg/$pkg" "$fuzzer" "$fuzzer"
+	# compile_native_go_fuzzer_v2 exits 0 when it cannot find the function.
+	test -x "$OUT/$fuzzer"
+	# libFuzzer ignores f.Add, so the seeds are dumped to files first.
+	seeds=$(mktemp -d)
+	URUNC_SEED_DIR=$seeds go test -run "^$fuzzer\$" "./pkg/$pkg"
+	TMPDIR=$zips addStdLibCorpusToFuzzer -dir "$seeds" -fuzzer_name "$fuzzer"
+done
+rmdir "$zips"

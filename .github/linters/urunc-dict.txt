@@ -504,3 +504,5 @@ errgrpc
 Inuth
 clusterfuzzlite
 gotoolchain
+dests
+fuzzseed
