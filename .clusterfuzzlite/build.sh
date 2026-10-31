@@ -22,19 +22,20 @@ export GOTOOLCHAIN=local
 
 # addStdLibCorpusToFuzzer makes each zip in TMPDIR and moves it to $OUT, which can be another filesystem.
 zips=$(mktemp -d -p "$OUT")
-targets=(
-	unikontainers:FuzzGetUnikernelConfig
-	unikontainers:FuzzCreate
-	unikontainers:FuzzCreateTyped
-)
-for t in "${targets[@]}"; do
-	pkg=${t%%:*} fuzzer=${t#*:}
-	compile_native_go_fuzzer_v2 "github.com/urunc-dev/urunc/pkg/$pkg" "$fuzzer" "$fuzzer"
+# Every fuzz target of the repo, as dir:Name.
+targets=$(grep -rHoE --include='*_test.go' '^func Fuzz[A-Za-z0-9_]+' pkg internal | sed 's|/[^/]*:func |:|' | sort -u)
+test -n "$targets"
+# The binaries and zips are named after the target, so a name cannot be used twice.
+test -z "$(cut -d: -f2 <<<"$targets" | sort | uniq -d)"
+module=$(go list -m)
+for t in $targets; do
+	dir=${t%%:*} fuzzer=${t#*:}
+	compile_native_go_fuzzer_v2 "$module/$dir" "$fuzzer" "$fuzzer"
 	# compile_native_go_fuzzer_v2 exits 0 when it cannot find the function.
 	test -x "$OUT/$fuzzer"
 	# libFuzzer ignores f.Add, so the seeds are dumped to files first.
 	seeds=$(mktemp -d)
-	URUNC_SEED_DIR=$seeds go test -run "^$fuzzer\$" "./pkg/$pkg"
+	URUNC_SEED_DIR=$seeds go test -run "^$fuzzer\$" "./$dir"
 	TMPDIR=$zips addStdLibCorpusToFuzzer -dir "$seeds" -fuzzer_name "$fuzzer"
 done
 rmdir "$zips"
